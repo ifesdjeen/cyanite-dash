@@ -8,6 +8,25 @@ function cubism_graphiteFormatDate(time) {
 }
 
 
+function random(context, name) {
+  var value = 0,
+      values = [],
+      i = 0,
+      last;
+  return context.metric(function(start, stop, step, callback) {
+    start = +start, stop = +stop;
+    if (isNaN(last)) last = start;
+    while (last < stop) {
+      last += step;
+      value = Math.max(-10, Math.min(10, value + .8 * Math.random() - .4 + .2 * Math.cos(i += .2)));
+      values.push(value);
+    }
+    values = values.slice((start - stop) / step)
+      //console.log(values)
+    callback(null, values);
+  }, name);
+}
+
 cubism.metric.prototype.extent = function() {
   var i = 0,
       n = this.context.size(),
@@ -32,68 +51,46 @@ cubism.context.prototype.graphite_json = function(host) {
       context = this;
 
   source.metric = function(expression) {
-    var sum = "sum";
-    var firstRun = true;
-    var start_ = null;
+    var start_ = null,
+        firstLoad = true;
 
     var metric = context.metric(function(start, stop, step, callback) {
       var target = expression;
-
-      // Apply the summarize, if necessary.
-      /* if (step !== 1e4) target = "summarize(" + target + ",'"
-         + (!(step % 36e5) ? step / 36e5 + "hour" : !(step % 6e4) ? step / 6e4 + "min" : step / 1e3 + "sec")
-         + "','" + sum + "')"; */
-
       d3.json(host + "/render?format=json"
           + "&target=" + encodeURIComponent(target)
-          + "&from=" + (start_ || "-24min") //|| cubism_graphiteFormatDate(start)  //"-24min" // off-by-two?
+          + "&from=" + (start_ || "-24min")
           , function(text) {
             if (!text) {
               return callback(new Error("unable to load data"));
             } else {
               var s = text[0].datapoints;
-
+              if (s.length > 0) {
+                start_ = s[s.length - 1][1] - 7;
+              }
               var dp = s.map((a) => a[0]);
 
-              var res = [];
-              if (firstRun) {
-                for (var i = 0; i < 1440 - dp.length; i++) {
-                  res.push(0);
-                }
-                firstRun = false;
+              var diff;
+              if (firstLoad) {
+                diff = 1440;
+                firstLoad = false;
+              } else {
+                diff = Math.round((stop - start) / step);
               }
-
-              //console.log(dp.length)
-              if (dp.length > 0) {
-                start_ = s[s.length - 1][1] + 1;
-              }
-              var downstream = res.concat(dp);
-              console.log(downstream);
-              callback(null, downstream);
+              var dpl = s.length;
+              /* for (var i = 0; i < diff - dpl; i++) {
+                 dp.push(Math.random());
+                 } */
+              callback(null, dp);
             }
 
       });
     }, expression += "");
 
     metric.summarize = function(_) {
-      sum = _;
       return metric;
     };
 
     return metric;
-  };
-
-  source.find = function(pattern, callback) {
-    d3.json(host + "/metrics/find?format=completer"
-        + "&query=" + encodeURIComponent(pattern), function(result) {
-      if (!result) return callback(new Error("unable to find metrics"));
-      callback(null, result.metrics.map(function(d) { return d.path; }));
-    });
-  };
-
-  // Returns the graphite host.
-  source.toString = function() {
-    return host;
   };
 
   return source;
@@ -109,9 +106,12 @@ const Graph = React.createClass({
   },
 
   componentDidMount: function() {
-    var context = cubism.context().step(10000).serverDelay(5000).size(1440), // a default context
+    var context = cubism.context()
+                        .serverDelay(0)
+                        .clientDelay(0)
+                        .step(1e3).size(1440), // a default context
         graphite = context.graphite_json("http://localhost:8484"),
-        comparison = context.comparison()
+        comparison = context.comparison();
 
     d3.select("body")
       .selectAll(".axis")
@@ -128,37 +128,33 @@ const Graph = React.createClass({
     var horizon = context.horizon()
                          .height(50);
 
+
+
     this.props.metrics.map((metric) => {
-      d3.select("body").selectAll(metric)
+       d3.select("body").selectAll(metric)
         .data([graphite.metric(metric)])
-        .enter()
-        .insert("div", ".bottom")
-        .attr("class", "horizon")
-        .attr("id",  metric)
-        .call(horizon);
-    });
-    /*
-       d3.select("body").selectAll(".comparison")
-       .data([["internal.cyanite.jvm.memory.total.used",
-       "internal.cyanite.jvm.memory.heap.used"].map(graphite.metric)])
+        //.data([random(context, "foo")])
        .enter()
        .insert("div", ".bottom")
        .attr("class", "horizon")
-       .call(comparison);
-     */
+       .attr("id",  metric)
+       .call(horizon);
+       });
 
     context.on("focus", function(i) {
       d3.selectAll(".value").style("right", i == null ? null : context.size() - i + "px");
     });
 
-//      .data(graphite.metric("internal.cyanite.jvm.memory.heap.used"))
-//      .call(context.horizon());
-
   },
 
   render: function() {
     return (
-      <div className='h'>
+      <div className='metrics'>
+        123
+        { this.props.metrics.map((metric) =>
+          <div className='metrics {{metric}}'>
+          </div>
+          )}
       </div>
     );
   }

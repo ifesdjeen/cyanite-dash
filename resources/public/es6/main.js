@@ -9,8 +9,8 @@ ReactDOM.render(
                      "internal.cyanite.jvm.memory.heap.used",
                      "internal.cyanite.jvm.memory.heap.committed",
                      "internal.cyanite.jvm.thread.count",
-                     "internal.cyanite.jvm.thread.runnable.count",
-      "a.b"]}
+                     "internal.cyanite.jvm.thread.runnable.count"
+      ]}
       from="-5min"
       until="now"
       maxDataPoints="956"
