@@ -7,7 +7,6 @@ function cubism_graphiteFormatDate(time) {
   return Math.floor(time / 1000);
 }
 
-
 function random(context, name) {
   var value = 0,
       values = [],
@@ -64,8 +63,8 @@ cubism.context.prototype.graphite_json = function(host) {
               return callback(new Error("unable to load data"));
             } else {
               var s = text[0].datapoints;
-              if (s.length > 0) {
-                start_ = s[s.length - 1][1] - 7;
+              if (s.length > 7) {
+                start_ = s[s.length - 7][1]; // - (7 * (step / 1000)); // 7 periods ?
               }
               var dp = s.map((a) => a[0]);
 
@@ -77,9 +76,9 @@ cubism.context.prototype.graphite_json = function(host) {
                 diff = Math.round((stop - start) / step);
               }
               var dpl = s.length;
-              /* for (var i = 0; i < diff - dpl; i++) {
-                 dp.push(Math.random());
-                 } */
+              for (var i = 0; i < diff - dpl; i++) {
+                dp.unshift(NaN);
+              }
               callback(null, dp);
             }
 
@@ -105,13 +104,35 @@ const Graph = React.createClass({
     };
   },
 
+  componentWillUpdate: function () {
+    d3.selectAll(".horizon")
+      .call(this.horizon.remove)
+      .remove();
+
+    this.props.metrics.map((metric) => {
+      d3.select("body")
+        .selectAll(metric)
+        .data([this.graphite.metric(metric)])
+        .enter()
+        .insert("div", ".bottom")
+        .attr("id",  metric)
+        .attr("class", "horizon")
+        .on("click", function (a) { this.props.onDelete(metric) }.bind(this))
+        .call(this.horizon);
+    });
+
+  },
+
   componentDidMount: function() {
-    var context = cubism.context()
-                        .serverDelay(0)
-                        .clientDelay(0)
-                        .step(1e3).size(1440), // a default context
-        graphite = context.graphite_json("http://localhost:8484"),
-        comparison = context.comparison();
+    this.context = cubism.context()
+      /* .serverDelay(5000)
+         .clientDelay(100) */
+                         .step(5e3)
+                         .size(1440);
+    var context = this.context;
+
+    this.graphite = this.context.graphite_json("http://localhost:8484"),
+    this.comparison = this.context.comparison();
 
     d3.select("body")
       .selectAll(".axis")
@@ -119,27 +140,16 @@ const Graph = React.createClass({
       .enter()
       .append("div")
       .attr("class", function(d) { return d + " axis"; })
-      .each(function(d) { d3.select(this).call(context.axis().ticks(12).orient(d)); });
+      .each(function (d) { d3.select(this).call(context.axis().ticks(12).orient(d)); });
 
     d3.select("body").append("div")
       .attr("class", "rule")
-      .call(context.rule());
+      .call(this.context.rule());
 
-    var horizon = context.horizon()
-                         .height(50);
+    this.horizon = this.context
+                       .horizon()
+                       .height(50);
 
-
-
-    this.props.metrics.map((metric) => {
-       d3.select("body").selectAll(metric)
-        .data([graphite.metric(metric)])
-        //.data([random(context, "foo")])
-       .enter()
-       .insert("div", ".bottom")
-       .attr("class", "horizon")
-       .attr("id",  metric)
-       .call(horizon);
-       });
 
     context.on("focus", function(i) {
       d3.selectAll(".value").style("right", i == null ? null : context.size() - i + "px");
@@ -150,11 +160,6 @@ const Graph = React.createClass({
   render: function() {
     return (
       <div className='metrics'>
-        123
-        { this.props.metrics.map((metric) =>
-          <div className='metrics {{metric}}'>
-          </div>
-          )}
       </div>
     );
   }
